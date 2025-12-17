@@ -6,8 +6,8 @@ use axum::{
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
-use sqlx::MySqlPool;
 use sqlx::mysql::MySqlPoolOptions;
+use sqlx::{FromRow, MySqlPool};
 
 #[derive(Deserialize)]
 struct CreateUser {
@@ -19,6 +19,13 @@ struct CreateUser {
 struct UserResponse {
     id: u64,
     username: String,
+}
+
+#[derive(Serialize, FromRow)]
+struct User {
+    id: i32, // MySQL INT fits into Rust i32
+    username: String,
+    email: String,
 }
 
 #[tokio::main]
@@ -55,7 +62,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
-        .route("/users", post(create_user))
+        .route("/users", post(create_user).get(get_users))
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
@@ -95,4 +102,14 @@ async fn create_user(
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     }
+}
+
+async fn get_users(State(pool): State<MySqlPool>) -> Result<Json<Vec<User>>, (StatusCode, String)> {
+    // fetch_all returns a Vec<User>
+    let users = sqlx::query_as::<_, User>("SELECT id, username, email FROM users")
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(users))
 }
