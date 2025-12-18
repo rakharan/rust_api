@@ -1174,6 +1174,8 @@ name = "rust_api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "dotenvy",
+ "openssl",
  "serde",
  "sqlx",
  "tokio",

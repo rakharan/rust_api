@@ -1,9 +1,7 @@
-// src/main.rs
-use axum::{
-    routing::{post},
-    Router,
-};
+use axum::{Router, routing::post};
+use dotenvy::dotenv;
 use sqlx::mysql::MySqlPoolOptions;
+use std::env;
 
 // 1. Declare the modules
 mod handlers;
@@ -14,11 +12,24 @@ use handlers::{create_user, get_users};
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
+
+    let database_host = env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let database_user = env::var("DB_USER").unwrap_or_else(|_| "rust".to_string());
+    let database_password = env::var("DB_PASSWORD").unwrap_or_else(|_| "rust".to_string());
+    let database_name = env::var("DB_NAME").unwrap_or_else(|_| "rust_api".to_string());
+    let database_port = env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
+
     let pool = MySqlPoolOptions::new()
         .max_connections(5)
-        .connect("mysql://rust:rust@localhost:3306/rust_api")
+        .connect(&format!(
+            "mysql://{}:{}@{}:{}/{}",
+            database_user, database_password, database_host, database_port, database_name
+        ))
         .await
         .expect("Failed to connect to MySQL");
+
+    println!("Connected to MySQL database.");
 
     // Table creation omitted for brevity, assumes table exists
 
