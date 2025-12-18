@@ -10,8 +10,21 @@ mod models;
 // 2. Use the functions from the handlers module
 use handlers::{create_user, get_users};
 
+// Logging imports
+use tower_http::trace::TraceLayer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
 #[tokio::main]
 async fn main() {
+    // 1. Initialize Tracing
+    // This reads the RUST_LOG environment variable to decide what to log
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::new(
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "rust_api=debug,tower_http=debug".into()),
+        ))
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
     dotenv().ok();
 
     let database_host = env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
@@ -31,13 +44,13 @@ async fn main() {
 
     println!("Connected to MySQL database.");
 
-    // Table creation omitted for brevity, assumes table exists
 
     let app = Router::new()
         .route("/users", post(create_user).get(get_users))
+        .layer(TraceLayer::new_for_http())
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    println!("Listening on port 3000...");
+    tracing::info!("Server listening on port 3000");
     axum::serve(listener, app).await.unwrap();
 }
