@@ -4,9 +4,13 @@ use sqlx::mysql::MySqlPoolOptions;
 use std::env;
 
 // 1. Declare the modules
-mod handlers;
-mod models;
 mod errors;
+mod handlers;
+mod infra;
+mod models;
+mod repositories;
+mod services;
+mod state;
 
 // 2. Use the functions from the handlers module
 use handlers::{create_user, get_users};
@@ -14,6 +18,9 @@ use handlers::{create_user, get_users};
 // Logging imports
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+use crate::state::AppState;
+use infra::{PrimaryDb, ReplicaDb};
 
 #[tokio::main]
 async fn main() {
@@ -34,22 +41,38 @@ async fn main() {
     let database_name = env::var("DB_NAME").unwrap_or_else(|_| "rust_api".to_string());
     let database_port = env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
 
-    let pool = MySqlPoolOptions::new()
+    // Connect Pool 1
+    let primary_pool = MySqlPoolOptions::new()
         .max_connections(5)
         .connect(&format!(
             "mysql://{}:{}@{}:{}/{}",
             database_user, database_password, database_host, database_port, database_name
         ))
         .await
-        .expect("Failed to connect to MySQL");
+        .expect("Failed to connect to primary_pool MySQL");
+
+    // Connect Pool 2 (In real world, use a different URL)
+    let replica_pool = MySqlPoolOptions::new()
+        .max_connections(5)
+        .connect(&format!(
+            "mysql://{}:{}@{}:{}/{}",
+            database_user, database_password, database_host, database_port, database_name
+        ))
+        .await
+        .expect("Failed to connect to replica_pool MySQL");
+
+    // Bundle them
+    let state = AppState {
+        primary: PrimaryDb(primary_pool),
+        replica: ReplicaDb(replica_pool),
+    };
 
     println!("Connected to MySQL database.");
-
 
     let app = Router::new()
         .route("/users", post(create_user).get(get_users))
         .layer(TraceLayer::new_for_http())
-        .with_state(pool);
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     tracing::info!("Server listening on port 3000");

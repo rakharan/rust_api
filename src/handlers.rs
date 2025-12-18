@@ -1,38 +1,37 @@
-// src/handlers.rs
-use crate::errors::AppError;
-use crate::models::{CreateUser, User, UserResponse}; // Import from sibling module
-use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
-use sqlx::MySqlPool;
-use tracing::{info, instrument};
+use axum::{
+    extract::State,
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
 
-#[instrument(skip(pool))]
+use crate::models::CreateUser;
+use crate::errors::AppError;
+use crate::repositories::UserRepository;
+use crate::services::UserService;
+use crate::infra::{PrimaryDb, ReplicaDb};
+
 pub async fn create_user(
-    State(pool): State<MySqlPool>,
+    State(PrimaryDb(pool)): State<PrimaryDb>,
     Json(payload): Json<CreateUser>,
 ) -> Result<impl IntoResponse, AppError> {
-    info!("Attempting to create user: {}", payload.email);
+    
+    // dependency injection
+    let repo = UserRepository::new(pool);
+    let service = UserService::new(repo);
 
-    let result = sqlx::query("INSERT INTO users (username, email) VALUES (?, ?)")
-        .bind(&payload.username)
-        .bind(&payload.email)
-        .execute(&pool)
-        .await?;
+    let response = service.create_user(payload).await?;
 
-    let id = result.last_insert_id();
-
-    info!("User created successfully with ID: {}", id);
-
-    let response = UserResponse {
-        id,
-        username: payload.username,
-    };
     Ok((StatusCode::CREATED, Json(response)))
 }
 
-pub async fn get_users(State(pool): State<MySqlPool>) -> Result<Json<Vec<User>>, AppError> {
-    let users = sqlx::query_as::<_, User>("SELECT id, username, email FROM users")
-        .fetch_all(&pool)
-        .await?;
+pub async fn get_users(
+    State(ReplicaDb(pool)): State<ReplicaDb>
+) -> Result<impl IntoResponse, AppError> {
+    let repo = UserRepository::new(pool);
+    let service = UserService::new(repo);
+
+    let users = service.get_all_users().await?;
 
     Ok(Json(users))
 }
