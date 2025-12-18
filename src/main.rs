@@ -6,6 +6,7 @@ use std::env;
 // 1. Declare the modules
 mod handlers;
 mod models;
+mod errors;
 
 // 2. Use the functions from the handlers module
 use handlers::{create_user, get_users};
